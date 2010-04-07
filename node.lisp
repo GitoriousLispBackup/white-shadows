@@ -1,3 +1,15 @@
+;; Object sending is provided by function SEND-TASK
+;; Object receiving and execution are provided by function MAKE-ECHOER
+
+;; How to test:
+;;    LOAD this file
+;;    Open *inferior-lisp* buffer in new window to watch results of execution
+;;    Open REPL and type (ws-node::send-task ws-node::*node1* '(+ 2 3))
+;;    You will see some movement in the *inferior-lisp* window
+;;    Any READable lisp objects may be sent on execution
+
+
+
 (in-package :common-lisp-user)
 
 (defpackage h2s04.white-shadow-node
@@ -13,7 +25,6 @@
 
 (defparameter *port* 30033)
 
-(asdf:operate 'asdf:load-op 'cl-store)
 
 
 (defun make-echoer (stream id disconnector)
@@ -21,7 +32,6 @@
     (declare (ignore _))
     (handler-case
         (let ((cmd (read stream)))
-          ;;(setf line (subseq line 0 (1- (length line))))
 	  (cond ((equal cmd '(quit))
                  (funcall disconnector))
                 (t
@@ -97,14 +107,10 @@
 	(force-output)
 	nil))))
 
+
 (defparameter *node1* (tcp-connect "127.0.01" 30033))
 
 
-
 (defun send-task (socket task)
-  (let ((task-str (concatenate 'string (prin1-to-string '(+ 15 25)) (list #\return #\newline))))
-	   (sb-bsd-sockets:socket-send ws-node::*node1* cmd (length cmd))))
-
-;;(socket-send socket
-;;	       (concatenate 'string task (list #\return #\newline))
-;;	       (+ (length task) 2))
+  (let ((task-str (concatenate 'string (prin1-to-string task) (list #\return #\newline))))
+	   (sb-bsd-sockets:socket-send socket task-str (length task-str))))
