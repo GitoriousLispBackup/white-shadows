@@ -42,7 +42,8 @@
 ;; protocol documentation
 ;; 1. send a single task:
 ;;   A. Master establishes tcp connection to a slave
-;;   B. Master sends a text message of the following format:
+;;   B. Master sends a five-digit string that represents the length of a folowing message. If this number is less than five digits long then it must be prepended with zeros: 00024 or 01234
+;;   C. Master sends a text message of the following format:
 ;;
 ;;   (SINGLE-TASK (ID <a number>) (NAME <a string> ) (RESPOND-TO <a vector> <a number>)
 ;;     (<TASK CODE1>)
@@ -141,64 +142,81 @@
 
 (defun test ()
   (with-tcp-connection cnv (vector 127 0 0 1) 2993
-		       (sb-bsd-sockets:socket-send cnv "far far away - --===000-- -" 18)))
+    ()))
 
 
 ;; for testing purposes
 (defun make-print-server ()
   (sb-thread:make-thread (lambda ()
-			   (let ((buffer (make-array 250 :element-type 'character :initial-element #\a))
+			   (let ((buffer (make-array 20 :element-type 'character :initial-element #\space))
 				 (socket (make-instance 'sb-bsd-sockets:inet-socket
 							:type :stream
 							:protocol :tcp)))
 			     (unwind-protect
 				  (progn
-				    (sb-bsd-sockets:socket-bind socket (vector 127 0 0 1) 2993)
+				    (sb-bsd-sockets:socket-bind socket (vector 127 0 0 1) 2991)
 				    (sb-bsd-sockets:socket-listen socket 5)
 				    (format t "listen over. acceptig...~%")
-				    (let ((client-socket (socket-accept socket)))
-				      (format t "accepted. receiving...~%")
-				      (sb-bsd-sockets:socket-receive client-socket buffer nil)
-				      (format t "received data:~a~%" buffer)
-				      (format t "closing socket normally...")
-				      (sb-bsd-sockets:socket-close client-socket)))
-			       (progn (sb-bsd-sockets:socket-close socket)
-				      (print "unwind-protect:socket closed")))))))
+				    (let* ((client-socket (socket-accept socket))
+					   (socket-stream (sb-bsd-sockets:socket-make-stream client-socket :input t :output t)))
+				      (format t "accepted. reading from stream...~%")
+				      (format t "(read) returned:~a~%" (read socket-stream))
+				      (sb-bsd-sockets:socket-close client-socket))
+				    (return-from make-print-server nil)
+				    ;; old code
+				    (sb-bsd-sockets:socket-receive client-socket buffer nil)
+				    (with-input-from-string (task-stream buffer)
+				      (let ((task (read task-stream)))
+					(when (single-task-p task)
+					  (format t "single-task-p: t~%"))
+					(when (validate-single-task task)
+					  (format t "validate-single-task: t~%"))
+					(if (and (single-task-p task)
+						 (validate-single-task task))
+					    (format t "task validated. contents:~a~%" task)
+					    (format t "task validation error~%"))))
+				    (format t "received data:~a~%" buffer)
+				    (format t "closing socket normally...~%")
+				    (sb-bsd-sockets:socket-close client-socket)))
+			     (progn (sb-bsd-sockets:socket-close socket)
+				    (format t  "unwind-protect:socket closed~%"))))))
 
 
-	      
+
 
 
 ;; protocol functions
 ;;-------------------
+
+
 
 ;; ok
 (defun send-task (task id name respond-to-ip respond-to-port slave)
   "Low-level function that sends lisp objects to a remote host. In case of errors during execution REMOTE-ERROR exception is raised."
   (with-tcp-connection connection (node-ip slave) (node-port slave)
     (send-printable-object connection `(TASK (ID ,id)
-						    (NAME ,name)
-						    (RESPOND-TO ,respond-to-ip ,respond-to-port)
-						    ,task))))
+					     (NAME ,name)
+					     (RESPOND-TO ,respond-to-ip ,respond-to-port)
+					     ,task))))
 
 
 
 ;; ok
 (defun single-task-p (task)
   (and (listp task)
-       (eql (first task) 'TASK)))
+       (equal (symbol-name (first task)) "TASK")))
 
 ;; ok
 (defun validate-single-task (task)
-    (and (eql (first task) 'TASK)
-         (eql (first (second task)) 'ID)
-         (eql (first (third task)) 'NAME)
-         (eql (first (fourth task)) 'RESPOND-TO)
-         (= (length (second task)) 2)
-         (= (length (third task)) 2)
-         (= (length (fourth task)) 3)
-         (eql (type-of (second (fourth task))) 'SIMPLE-VECTOR)
-         (= (second (type-of (second (fourth task)))) 4)))
+  (and (equal (symbol-name (first task)) "TASK")
+       (equal (symbol-name (first (second task))) "ID")
+       (equal (symbol-name (first (third task))) "NAME")
+       (equal (symbol-name (first (fourth task))) "RESPOND-TO")
+       (= (length (second task)) 2)
+       (= (length (third task)) 2)
+       (= (length (fourth task)) 3)
+       (eql (first (type-of (second (fourth task)))) 'SIMPLE-VECTOR)
+       (= (second (type-of (second (fourth task)))) 4))) ;; ensure that vector has 4 elements
 
 (defun execute-task (task)
   ())

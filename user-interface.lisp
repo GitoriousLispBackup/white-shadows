@@ -1,6 +1,6 @@
 (in-package :common-lisp-user)
 
-(defpackage has04.white-shadow-ui
+(defpackage h2s04.white-shadow-ui
   (:nicknames :ws-ui)
   (:use :common-lisp :common-lisp-user))
 

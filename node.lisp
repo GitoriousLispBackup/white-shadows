@@ -12,36 +12,88 @@
 
 (in-package :common-lisp-user)
 
-(defpackage h2s04.white-shadow-node
-  (:nicknames :ws-node)
+(require 'sb-bsd-sockets)
+
+(defpackage h2s04.white-shadow.node
+  (:nicknames :ws.node)
   (:use :common-lisp
 	:common-lisp-user
 	:sb-bsd-sockets))
 
 
-(in-package :ws-node)
+(in-package :ws.node)
 
 
 
-(defparameter *port* 30033)
+(defparameter *port* 30050)
+
+;; mock
+(defun single-command-p (cmd)
+  (declare (ignore cmd))
+  t)
+
+;; mock
+(defun set-of-files-p (cmd)
+  (declare (ignore cmd))
+  t)
+
+;; mock
+(defun report-protocol-mismatch (situation)
+  (print situation))
+
+;; mock
+(defun execute-single-command (cmd socket stream)
+  (declare (ignore stream))
+  (format t "executing: ~a~%" cmd)
+  (let ((results (eval cmd)))
+    (format t "results: ~a~%" results))
+  (sb-bsd-sockets:socket-send socket
+			      "OK"
+			      (length "OK")))
+
+;; mock
+(defun execute-set-of-files (cmd)
+  (declare (ignore cmd))
+  t)
 
 
 
-(defun make-echoer (stream id disconnector)
+
+(defun make-debugger-hook (socket stream)
+  (declare (ignore stream))
+  (lambda (condition some-var)
+    (declare (ignore some-var condition))
+    (invoke-restart :ABORT)
+    (let ((error-code-str "UNHANDLED-EXCEPTION"))
+      (sb-bsd-sockets:socket-send socket
+				  error-code-str
+				  (length error-code-str)))))
+
+(defun execute (cmd socket stream)
+  (let ((*debugger-hook* (make-debugger-hook socket stream)))
+    (handler-case
+	(cond ((single-command-p cmd) (execute-single-command cmd socket stream))
+	      ((set-of-files-p cmd) (execute-set-of-files cmd))
+	      (t (report-protocol-mismatch 'unknown-task-type)))
+      (t () (let* ((error-code-str "UNHANDLED-EXCEPTION"))
+	      (print error-code-str)
+	      (sb-bsd-sockets:socket-send socket
+					  error-code-str
+					  (length error-code-str)))))))
+
+
+(defun make-echoer (socket stream id disconnector)
+  "Returns low-level communication function. The function checks the type of a task - SINGLE-TASK or FILES. In case of unhandled exception terminates task."
+  (declare (ignore id))
   (lambda (_)
     (declare (ignore _))
     (handler-case
         (let ((cmd (read stream)))
-	  (cond ((equal cmd '(quit))
-                 (funcall disconnector))
-                (t
-		 (format t "evaling: ~a~%" cmd)
-		 (let ((result (eval cmd)))
-		   (format t "~a: ~a~%" id result)
-		   (format stream "~a: ~a~%" id result))
-                 (force-output stream))))
+	  (when (equal cmd 'quit)
+	    (funcall disconnector))
+	  (execute cmd socket stream))
       (end-of-file ()
-        (funcall disconnector)))))
+	(funcall disconnector)))))
 
 (defun make-disconnector (socket id)
   (lambda ()
@@ -55,7 +107,8 @@
         (fd (socket-file-descriptor socket)))
     (sb-impl::add-fd-handler fd
                              :input
-                             (make-echoer stream
+                             (make-echoer socket
+					  stream
                                           id
                                           (make-disconnector socket id)))))
 
@@ -92,11 +145,17 @@
       nil))
 
 
+;; (defun print-info-from-client (socket)
+;;  (let ((stream (socket-make-stream socket :output t :input t)))
+;;    (format t "SERVER SOCKET has ACCEPTED DATA:~a" (read stream))))
+
+
 ;; connect to a server
 
 (defun tcp-connect (server port &optional (timeout 5))
   "Returns a socket connected to SERVER:PORT. If an error occurs, or the attempt times out
   after TIMOUT (default 5) secons, nil is returned."
+  (declare (ignore timeout))
   (when (and server port)
     (handler-case
 	(let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
@@ -108,9 +167,15 @@
 	nil))))
 
 
-(defparameter *node1* (tcp-connect "127.0.01" 30033))
+(defparameter *node1* (tcp-connect "127.0.0.1" 30050))
 
 
 (defun send-task (socket task)
-  (let ((task-str (concatenate 'string (prin1-to-string task) (list #\return #\newline))))
-	   (sb-bsd-sockets:socket-send socket task-str (length task-str))))
+  (let ((task-str (concatenate 'string (prin1-to-string task) (list #\return #\newline)))
+	(buffer (make-array 255 :element-type 'character :initial-element #\0 :adjustable t)))
+	   (sb-bsd-sockets:socket-send socket task-str (length task-str))
+	   (format t "Info from node:~a~%" (sb-bsd-sockets:socket-receive socket buffer nil))))
+
+(defun send-file (socket filename)
+  (declare (ignore socket filename))
+  nil)
