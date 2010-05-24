@@ -1,0 +1,41 @@
+07 Apr 2010
+white-shadow
+  Stage1:
+    -send lisp objects
+    -receive lisp objects
+    -send whole files (text and binary)
+    -receive files
+  Stage2:
+    -interact with debugger
+  Stage3:
+    -load balancing
+    -user interface
+
+
+
+07 Apr 2010
+white-shadow experiment1
+  Stage1 [level1]:
+    -send printable lisp objects................[done]
+    -receive printable lisp objects.............[done]
+    -execution of received objects..............[done]
+  Stage2:
+    -interact with debugger
+  Stage3:
+    -load balancing
+    -user interface
+
+
+
+18 May 2019
+white-shadow experiment2
+  Stage1 [level1]:
+    -send printable lisp objects................[done]
+    -receive printable lisp objects.............[done]
+    -execution of received objects..............[done]
+  Stage2:
+    -node hooks all exceptions..................[done]
+    -node sends exception report to master......[
+  Stage3
+    -load balancing
+    -user interface
