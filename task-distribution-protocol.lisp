@@ -62,17 +62,22 @@
 
 (in-package :common-lisp-user)
 
+(require 'sb-bsd-sockets)
+
 (defpackage h2s04.white-shadow.task-distribution-protocol
   (:nicknames :ws.protocol)
   (:use :common-lisp
-	:common-lisp-user
-	:sb-bsd-sockets))
+	:common-lisp-user)
+  (:export :*default-slave-port*
+	   :single-task-p
+	   :send-task
+	   :send-protocol-error))
 
 (in-package :ws.protocol)
 
 
 
-(defparameter *default-port* 30033 "Default slave's listening port")
+(defparameter *default-slave-port* 30033 "Default slave's listening port")
 
 
 
@@ -86,7 +91,7 @@
 
 (defstruct address
   (ip 0)
-  (port *default-port*))
+  (port *default-slave-port*))
 
 
 
@@ -141,45 +146,8 @@
 	 (sb-bsd-sockets:socket-close ,connection-var)))))
 
 (defun test ()
-  (with-tcp-connection cnv (vector 127 0 0 1) 2993
-    ()))
-
-
-;; for testing purposes
-(defun make-print-server ()
-  (sb-thread:make-thread (lambda ()
-			   (let ((buffer (make-array 20 :element-type 'character :initial-element #\space))
-				 (socket (make-instance 'sb-bsd-sockets:inet-socket
-							:type :stream
-							:protocol :tcp)))
-			     (unwind-protect
-				  (progn
-				    (sb-bsd-sockets:socket-bind socket (vector 127 0 0 1) 2991)
-				    (sb-bsd-sockets:socket-listen socket 5)
-				    (format t "listen over. acceptig...~%")
-				    (let* ((client-socket (socket-accept socket))
-					   (socket-stream (sb-bsd-sockets:socket-make-stream client-socket :input t :output t)))
-				      (format t "accepted. reading from stream...~%")
-				      (format t "(read) returned:~a~%" (read socket-stream))
-				      (sb-bsd-sockets:socket-close client-socket))
-				    (return-from make-print-server nil)
-				    ;; old code
-				    (sb-bsd-sockets:socket-receive client-socket buffer nil)
-				    (with-input-from-string (task-stream buffer)
-				      (let ((task (read task-stream)))
-					(when (single-task-p task)
-					  (format t "single-task-p: t~%"))
-					(when (validate-single-task task)
-					  (format t "validate-single-task: t~%"))
-					(if (and (single-task-p task)
-						 (validate-single-task task))
-					    (format t "task validated. contents:~a~%" task)
-					    (format t "task validation error~%"))))
-				    (format t "received data:~a~%" buffer)
-				    (format t "closing socket normally...~%")
-				    (sb-bsd-sockets:socket-close client-socket)))
-			     (progn (sb-bsd-sockets:socket-close socket)
-				    (format t  "unwind-protect:socket closed~%"))))))
+  (send-task '(+ 2 3 "gg") 234 "unnamed" (vector 127 0 0 1) 4040 (make-node :ip (vector 127 0 0 1)
+									    :port 2986)))
 
 
 
@@ -197,18 +165,28 @@
     (send-printable-object connection `(TASK (ID ,id)
 					     (NAME ,name)
 					     (RESPOND-TO ,respond-to-ip ,respond-to-port)
-					     ,task))))
+					     ,task))
+    (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
+							     :input t
+							     :output t))
+	   (slave-answer (read socket-stream)))
+      (format t "slave said:~a~%" slave-answer) ;; debug
+      (cond
+	((equal (symbol-name slave-answer) "TASK-OK")
+	 nil)
+	((equal (symbol-name slave-answer) "BAD-FORMAT")
+	 (error "Slave ~a:~a did not understand the message."
+		(node-ip slave)
+		(node-port slave)))
+	(t (error "Slave answered in an unknown manner:~a"
+		  slave-answer))))))
 
 
 
 ;; ok
 (defun single-task-p (task)
   (and (listp task)
-       (equal (symbol-name (first task)) "TASK")))
-
-;; ok
-(defun validate-single-task (task)
-  (and (equal (symbol-name (first task)) "TASK")
+       (equal (symbol-name (first task)) "TASK")
        (equal (symbol-name (first (second task))) "ID")
        (equal (symbol-name (first (third task))) "NAME")
        (equal (symbol-name (first (fourth task))) "RESPOND-TO")
@@ -218,8 +196,30 @@
        (eql (first (type-of (second (fourth task)))) 'SIMPLE-VECTOR)
        (= (second (type-of (second (fourth task)))) 4))) ;; ensure that vector has 4 elements
 
-(defun execute-task (task)
-  ())
+
+
+;; ok
+(defun send-protocol-error (socket error-name)
+  (send-printable-object socket error-name))
+
+
+
+;; mock
+(defun send-resource (file-name resource-name slave)
+  (with-tcp-connection connection (node-ip slave) (node-port slave)
+    (send-printable-object connection `(RESOURCE ,resource-name))
+    (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
+							     :input t
+							     :output t))
+	   (slave-answer (read socket-stream)))
+      (format t "slave said:~a~%" slave-answer)
+      (cond
+	((equal (symbol-name slave-answer) "RESOURCE-OK")
+	 (send-binary-file file-name connection)
+	 ;; finish this func)))))
+
+
+
 ;; mock
 ;;(defun send-file (filename socket) ;; sockets??? streams??? read node.lisp
 ;;  (let ((file-contents (read-file-contents filename)))
