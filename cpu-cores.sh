@@ -1,0 +1,1 @@
+cat /proc/cpuinfo | grep "processor" | awk 'BEGIN { cpus = 0; } { cpus = cpus + 1 } END { print cpus }'
