@@ -216,40 +216,58 @@
 
 ;; mock
 (defun send-binary-file (file-name socket)
-  (let ((bulk (make-array 100000 :element-type '(unsigned-byte 8) :initial-element 0)))
+  (let ((bulk (make-array 100000 :element-type '(unsigned-byte 8) :initial-element 0))
+	(file-length 0))
     (with-open-file (file-stream file-name :element-type '(unsigned-byte 8))
-      (format t "file opened~%")
+      (setf file-length (file-length file-stream))
+      (format t "file opened, length:~a~%" file-length)
       (handler-case
-	  (do ((bytes-read (read-sequence bulk file-stream)
-			   (read-sequence bulk file-stream))
-	       (total 0))
-	      ((= bytes-read 0)) ;; end-case
-	    (setf total (+ total bytes-read))
-	    (format t "read-sequence returned:~a, total:~a~%" bytes-read total)
-	    (sb-bsd-sockets:socket-send socket bulk (length bulk)))
+	  (progn
+	    (do ((bytes-read (read-sequence bulk file-stream)
+			     (read-sequence bulk file-stream))
+		 (total 0))
+		((= bytes-read 0)) ;; end-case
+	      (setf total (+ total bytes-read))
+	      (format t "read-sequence returned:~a, total:~a~%" bytes-read total)
+	      (format t "(send) returned:~a~%"
+		      (sb-bsd-sockets:socket-send socket bulk bytes-read)))
+	    (format t "all data sent. exiting send-binary-file...~%"))
 	(END-OF-FILE ()
 	  (format t "eof~%"))))))
 
 
 
 ;; mock
+(defun get-file-size (file-name)
+  (with-open-file (file-stream file-name :element-type '(unsigned-byte 8))
+    ;; warning. if :element-type is not (unsigned-byte 8) then the function
+    ;; file-length may return unpredictable result (implementation-dependent)
+    (file-length file-stream)))
+    
+
+
+
+;; mock
 (defun send-resource (file-name resource-name slave)
   (with-tcp-connection connection (node-ip slave) (node-port slave)
-    (send-printable-object connection `(RESOURCE ,resource-name))
+    (send-printable-object connection `(RESOURCE
+					,resource-name
+					,(get-file-size resource-name)))
     (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
 							     :input t
 							     :output t))
 	   (slave-answer nil)
-	   (buffer (make-array 25 :initial-element 0 :element-type '(unsigned-byte 8))))
+	   (bytes-slave-received 0))
       (format t "connecting to port ~a~%" (node-port slave))
+      (format t "sending file:~a~%" file-name)
       (format t "reading slave's answer...~%")
-      ;;(sb-bsd-sockets:socket-receive connection buffer 25)
       (setf slave-answer (read socket-stream))
       (format t "slave said:~a~%" slave-answer)
       (cond
 	((equal (symbol-name slave-answer) "RESOURCE-OK")
-	 (sb-bsd-sockets:socket-send connection "pew-pew" nil)
-	 ;;(send-binary-file file-name connection)
+	 (send-binary-file file-name connection)
+	 (setf bytes-slave-received (read socket-stream))
+	 (format t "bytes slave received:~a~%" bytes-slave-received)
 	 (sb-bsd-sockets:socket-close connection))
         ((equal (symbol-name slave-answer) "BAD-FORMAT")
 	 (error "Slave ~a:~a did not understand the message."

@@ -15,27 +15,31 @@
 
 
 ;; mock
-(defun accept-binary-file (file-name socket)
+(defun accept-binary-file (file-name file-size socket)
   (let ((buffer (make-array 600000
 			    :element-type '(unsigned-byte 8)
-			    :initial-element 0)))
+			    :initial-element 0))
+	(total 0))
     (with-open-file (file-stream file-name
 				 :direction :output
 				 :element-type '(unsigned-byte 8)
 				 :if-exists :supersede)
-      (format t "accept-binary-file: receiving...~%")
+      (format t "accept-binary-file: receiving...~%file-size should be:~a~%" file-size)
       (handler-case
-	  (do ((i 0 (1+ i))
-	       (total 0))
-	      ((> i 30) nil) ;; end-case
+	  (progn
+	    (do ()
+	      ((>= total file-size) nil) ;; end-case
 	    (multiple-value-bind (data len host)
 		(sb-bsd-sockets:socket-receive socket buffer nil)
 	      (declare (ignore data))
 	      (setf total (+ total len))
 	      (format t "received some data, len:~a, total:~a, from:~a~%" len total host)
 	      (when (= len 0)
-		(return)))
-	    (write-sequence buffer file-stream))
+		(format t "len is zero. sending total bytes...~%")
+		(ws.protocol::send-printable-object socket total)
+		(return))
+	      (write-sequence buffer file-stream :end len)))
+	    (ws.protocol::send-printable-object socket total))
 	(END-OF-FILE () (format t "end of file catched~%"))))))
 
 
@@ -81,6 +85,7 @@
 		(accept-binary-file (concatenate 'string
 						 "res/"
 						 (second task))
+				    (third task)
 				    client-socket))
 	       (t (format client-stream "~a~%" 'bad-format)))
 	     (sb-bsd-sockets:socket-close client-socket)))
