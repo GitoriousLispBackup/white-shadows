@@ -70,8 +70,11 @@
 	:common-lisp-user)
   (:export :*default-slave-port*
 	   :single-task-p
+	   :resource-p
 	   :send-task
-	   :send-protocol-error))
+	   :send-resource
+	   :send-protocol-error
+	   :make-node))
 
 (in-package :ws.protocol)
 
@@ -198,9 +201,34 @@
 
 
 
+;; mock
+(defun resource-p (list)
+  (and (listp list)
+       (equal (symbol-name (first list)) "RESOURCE")))
+
+
+
 ;; ok
-(defun send-protocol-error (socket error-name)
-  (send-printable-object socket error-name))
+;;(defun send-protocol-error (socket error-name)
+;;  (send-printable-object socket error-name))
+
+
+
+;; mock
+(defun send-binary-file (file-name socket)
+  (let ((bulk (make-array 100000 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (with-open-file (file-stream file-name :element-type '(unsigned-byte 8))
+      (format t "file opened~%")
+      (handler-case
+	  (do ((bytes-read (read-sequence bulk file-stream)
+			   (read-sequence bulk file-stream))
+	       (total 0))
+	      ((= bytes-read 0)) ;; end-case
+	    (setf total (+ total bytes-read))
+	    (format t "read-sequence returned:~a, total:~a~%" bytes-read total)
+	    (sb-bsd-sockets:socket-send socket bulk (length bulk)))
+	(END-OF-FILE ()
+	  (format t "eof~%"))))))
 
 
 
@@ -211,24 +239,21 @@
     (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
 							     :input t
 							     :output t))
-	   (slave-answer (read socket-stream)))
+	   (slave-answer nil)
+	   (buffer (make-array 25 :initial-element 0 :element-type '(unsigned-byte 8))))
+      (format t "connecting to port ~a~%" (node-port slave))
+      (format t "reading slave's answer...~%")
+      ;;(sb-bsd-sockets:socket-receive connection buffer 25)
+      (setf slave-answer (read socket-stream))
       (format t "slave said:~a~%" slave-answer)
       (cond
 	((equal (symbol-name slave-answer) "RESOURCE-OK")
-	 (send-binary-file file-name connection)
-	 ;; finish this func)))))
-
-
-
-;; mock
-;;(defun send-file (filename socket) ;; sockets??? streams??? read node.lisp
-;;  (let ((file-contents (read-file-contents filename)))
-;;    (send-printable-object socket file-contents)
-;;    (let ((response (read socket
-
-;; mock
-;;(defun send-files (files-list socket)
-;;  "Low-level function that sends bunch of files to a remote host. FILES-LIST contains file paths, e.g. '(/home/user/file1.lisp /home/user/file2.lisp). Each file is sent and executed in order of appearence in the FILES-LIST. Files are executed only after they all are received. In case of error during execution REMOTE-ERROR exception is raised."
-;;  (dolist (filename files-list)
-;;    (let ((file-contents (read-file-contents filename)))
-;;      (send-printable-object socket (list
+	 (sb-bsd-sockets:socket-send connection "pew-pew" nil)
+	 ;;(send-binary-file file-name connection)
+	 (sb-bsd-sockets:socket-close connection))
+        ((equal (symbol-name slave-answer) "BAD-FORMAT")
+	 (error "Slave ~a:~a did not understand the message."
+		(node-ip slave)
+		(node-port slave)))
+	 (t (error "Slave answered in an unknown manner:~a"
+		   slave-answer))))))
