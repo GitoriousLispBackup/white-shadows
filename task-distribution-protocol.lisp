@@ -68,7 +68,8 @@
   (:nicknames :ws.protocol)
   (:use :common-lisp
 	:common-lisp-user)
-  (:export :*default-slave-port*
+  (:export :*default-master-port*
+	   :*default-slave-port*
 	   :single-task-p
 	   :resource-p
 	   :send-task
@@ -80,6 +81,7 @@
 
 
 
+(defparameter *default-master-port* 30032 "Default master's listening port, master waits for slaves on this port")
 (defparameter *default-slave-port* 30033 "Default slave's listening port")
 
 
