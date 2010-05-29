@@ -4,7 +4,8 @@
   (:nicknames :ws.tests)
   (:use :common-lisp
 	:common-lisp-user)
-  (:export :cpu-cores
+  (:export :perform-tests-suite
+	   :cpu-cores
 	   :fpu-test
 	   :mem-size
 	   :mem-access
@@ -17,6 +18,18 @@
 
 
 
+(defun perform-tests-suite ()
+  (multiple-value-bind (mem-total mem-free)
+      (mem-size)
+    (list `(listen-port ,ws.config:*default-slave-port*)
+	  `(architecture ,(architecture))
+	  `(cpus ,(cpu-cores))
+	  `(fpu-test ,(fpu-test))
+	  `(mem-total ,mem-total)
+	  `(mem-free ,mem-free)
+	  `(mem-access ,(mem-access)))))
+
+
 (defun executable-exists (name)
   "Returns t or nil"
   (when (or (find #\space name)
@@ -27,7 +40,7 @@
 								"whereis -b "
 								name))
 				      :output :stream))
-	 (line-responce (read-line (process-output process))))
+	 (line-responce (read-line (sb-ext:process-output process))))
     (when (search name line-responce :start2 1)
       t)))
 
@@ -37,7 +50,7 @@
   "Returns string"
   (let* ((process (sb-ext:run-program "/bin/sh" `("-c" "uname -m")
 				      :output :stream))
-	 (line-responce (read-line (process-output process))))
+	 (line-responce (read-line (sb-ext:process-output process))))
     line-responce))
 
 
@@ -45,7 +58,7 @@
 (defun cpu-cores ()
   "Returns number"
   (let ((process (sb-ext:run-program "/bin/sh" '("cpu-cores.sh") :output :stream)))
-    (read (process-output process))))
+    (read (sb-ext:process-output process))))
 
 
 
@@ -60,22 +73,21 @@
 
 
 (defun mem-size ()
-  
   (let ((process (sb-ext:run-program "/bin/sh" '("mem-stats.sh") :output :stream)))
-    (values (read (process-output process))
-	    (read (process-output process)))))
+    (values (read (sb-ext:process-output process))
+	    (read (sb-ext:process-output process)))))
 
 
 
 (defun mem-access ()
   (let ((array (make-array '(2000 2000) :element-type 'integer :initial-element 0))
 	(total-run-time 0))
-    (call-with-timing #'(lambda (&rest rest)
-			  (setf total-run-time
-				(second rest)))
-		      (lambda ()
-			(dotimes (k 1000)
-			  (dotimes (i 2000)
-			    (dotimes (y 2000)
-			      (aref array i y))))))
+    (sb-ext:call-with-timing #'(lambda (&rest rest)
+				 (setf total-run-time
+				       (second rest)))
+			     (lambda ()
+			       (dotimes (k 1000)
+				 (dotimes (i 2000)
+				   (dotimes (y 2000)
+				     (aref array i y))))))
     total-run-time))

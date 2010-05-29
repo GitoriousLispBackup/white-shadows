@@ -6,15 +6,20 @@
   (:nicknames :ws.slave)
   (:use :common-lisp
 	:common-lisp-user)
-  (:export :start-slave))
+  (:export :start-slave
+	   :connect-to-master))
 
 (in-package :ws.slave)
 
 
 
+(defparameter *current-master* nil "Holds ip of a master")
 
 
-;; mock
+
+
+
+;; ok
 (defun accept-binary-file (file-name file-size socket)
   (let ((buffer (make-array 600000
 			    :element-type '(unsigned-byte 8)
@@ -42,6 +47,30 @@
 	    (ws.protocol::send-printable-object socket total))
 	(END-OF-FILE () (format t "end of file catched~%"))))))
 
+(defparameter *tests* (ws.tests:perform-tests-suite))
+
+
+
+;; mock
+(defun connect-to-master (&optional
+			  (ip ws.config:*default-master*)
+			  (port ws.config:*default-master-port*))
+  (format t "[ws.slave:connect-to-master] performing tests...~%")
+  (let ((tests-result *tests*))
+    (ws.network:with-tcp-stream (stream ip port)
+      (format stream "~a~%" tests-result)
+      (finish-output stream)
+      (handler-case
+	  (let ((server-answer (read stream)))
+	    (cond
+	      ((equal (symbol-name server-answer) "OK")
+	       (setf *current-master* ip)
+	       (format t "succesfully connected to master ~a : ~a~%" ip port))
+	      ((equal (symbol-name server-answer) "ERROR")
+		(format t "master rejected this node~%"))
+	      (t
+		(error "I've sent tests to master but received crap. Exiting..."))))
+	(END-OF-FILE () (error "connection to master lost =("))))))
 
 
 
