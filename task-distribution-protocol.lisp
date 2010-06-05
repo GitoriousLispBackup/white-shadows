@@ -67,22 +67,18 @@
 (defpackage h2s04.white-shadow.task-distribution-protocol
   (:nicknames :ws.protocol)
   (:use :common-lisp
-	:common-lisp-user)
+	:common-lisp-user
+	:ws.g)
   (:export :*default-master-port*
 	   :*default-slave-port*
 	   :single-task-p
 	   :resource-p
 	   :send-task
-	   :send-resource
-	   :send-protocol-error
-	   :make-node))
+	   :send-resource))
 
 (in-package :ws.protocol)
 
 
-
-(defparameter *default-master-port* 30032 "Default master's listening port, master waits for slaves on this port")
-(defparameter *default-slave-port* 30033 "Default slave's listening port")
 
 
 
@@ -90,13 +86,13 @@
   (establishment-time nil)
   (address nil))
 
-(defstruct node
-  (ip nil)
-  (port nil))
+;;(defstruct node
+;;  (ip nil)
+;;  (port nil))
 
-(defstruct address
-  (ip 0)
-  (port *default-slave-port*))
+;;(defstruct address
+;;  (ip 0)
+;;  (port *default-slave-port*))
 
 
 
@@ -150,10 +146,6 @@
 	      ,@body)
 	 (sb-bsd-sockets:socket-close ,connection-var)))))
 
-(defun test ()
-  (send-task '(+ 2 3 "gg") 234 "unnamed" (vector 127 0 0 1) 4040 (make-node :ip (vector 127 0 0 1)
-									    :port 2986)))
-
 
 
 
@@ -163,13 +155,16 @@
 
 
 
-;; ok
-(defun send-task (task id name respond-to-ip respond-to-port slave)
-  "Low-level function that sends lisp objects to a remote host. In case of errors during execution REMOTE-ERROR exception is raised."
-  (with-tcp-connection connection (node-ip slave) (node-port slave)
-    (send-printable-object connection `(TASK (ID ,id)
+;; fix, get rid of with-tcp-connection, throw an exception in case of fail, not only return nil
+(defun send-task (task task-id name respond-to slave)
+  "Low-level function that sends lisp objects to a remote host. In case of errors during execution REMOTE-ERROR exception is raised and nil is returned. If ok, t is returned."
+  (with-tcp-connection connection (end-point-ip slave) (end-point-port slave)
+    (send-printable-object connection `(TASK (ID-IP ,(end-point-ip (task-id-end-point task-id)))
+					     (ID-PORT ,(end-point-port (task-id-end-point task-id)))
+					     (ID-NUMBER ,(task-id-number task-id))
 					     (NAME ,name)
-					     (RESPOND-TO ,respond-to-ip ,respond-to-port)
+					     (RESPOND-TO-IP ,(end-point-ip respond-to))
+					     (RESPOND-TO-PORT ,(end-point-port respond-to))
 					     ,task))
     (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
 							     :input t
@@ -178,13 +173,15 @@
       (format t "slave said:~a~%" slave-answer) ;; debug
       (cond
 	((equal (symbol-name slave-answer) "TASK-OK")
-	 nil)
+	 t)
 	((equal (symbol-name slave-answer) "BAD-FORMAT")
 	 (error "Slave ~a:~a did not understand the message."
-		(node-ip slave)
-		(node-port slave)))
+		(end-point-ip slave)
+		(end-point-port slave))
+	 nil)
 	(t (error "Slave answered in an unknown manner:~a"
-		  slave-answer))))))
+		  slave-answer)
+	   nil)))))
 
 
 
@@ -192,14 +189,17 @@
 (defun single-task-p (task)
   (and (listp task)
        (equal (symbol-name (first task)) "TASK")
-       (equal (symbol-name (first (second task))) "ID")
-       (equal (symbol-name (first (third task))) "NAME")
-       (equal (symbol-name (first (fourth task))) "RESPOND-TO")
-       (= (length (second task)) 2)
-       (= (length (third task)) 2)
-       (= (length (fourth task)) 3)
-       (eql (first (type-of (second (fourth task)))) 'SIMPLE-VECTOR)
-       (= (second (type-of (second (fourth task)))) 4))) ;; ensure that vector has 4 elements
+       (equal (symbol-name (first (second task))) "ID-IP")
+       (equal (symbol-name (first (third task))) "ID-PORT")
+       (equal (symbol-name (first (fourth task))) "ID-NUMBER")
+       (equal (symbol-name (first (fifth task))) "NAME")
+       (equal (symbol-name (first (sixth task))) "RESPOND-TO-IP")
+       (equal (symbol-name (first (seventh task))) "RESPOND-TO-PORT")))
+;;       (= (length (second task)) 2)
+;;       (= (length (third task)) 2)
+;;       (= (length (sixths task)) 3)
+;;       (eql (first (type-of (second (fourth task)))) 'SIMPLE-VECTOR)
+;;       (= (second (type-of (second (fourth task)))) 4))) ;; ensure that vector has 4 elements
 
 
 
@@ -251,7 +251,7 @@
 
 ;; mock
 (defun send-resource (file-name resource-name slave)
-  (with-tcp-connection connection (node-ip slave) (node-port slave)
+  (with-tcp-connection connection (end-point-ip slave) (end-point-port slave)
     (send-printable-object connection `(RESOURCE
 					,resource-name
 					,(get-file-size resource-name)))
@@ -260,7 +260,7 @@
 							     :output t))
 	   (slave-answer nil)
 	   (bytes-slave-received 0))
-      (format t "connecting to port ~a~%" (node-port slave))
+      (format t "connecting to port ~a~%" (end-point-port slave))
       (format t "sending file:~a~%" file-name)
       (format t "reading slave's answer...~%")
       (setf slave-answer (read socket-stream))
@@ -273,7 +273,7 @@
 	 (sb-bsd-sockets:socket-close connection))
         ((equal (symbol-name slave-answer) "BAD-FORMAT")
 	 (error "Slave ~a:~a did not understand the message."
-		(node-ip slave)
-		(node-port slave)))
+		(end-point-ip slave)
+		(end-point-port slave)))
 	 (t (error "Slave answered in an unknown manner:~a"
 		   slave-answer))))))

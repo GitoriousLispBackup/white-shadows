@@ -1,10 +1,12 @@
+;; depends on: ws.config
+
 (in-package :common-lisp-user)
 
 (defpackage h2s04.white-shadow.tests
   (:nicknames :ws.tests)
   (:use :common-lisp
 	:common-lisp-user)
-  (:export :perform-tests-suite
+  (:export :perform-test-suite
 	   :cpu-cores
 	   :fpu-test
 	   :mem-size
@@ -16,18 +18,6 @@
 
 
 
-
-
-(defun perform-tests-suite ()
-  (multiple-value-bind (mem-total mem-free)
-      (mem-size)
-    (list `(listen-port ,ws.config:*default-slave-port*)
-	  `(architecture ,(architecture))
-	  `(cpus ,(cpu-cores))
-	  `(fpu-test ,(fpu-test))
-	  `(mem-total ,mem-total)
-	  `(mem-free ,mem-free)
-	  `(mem-access ,(mem-access)))))
 
 
 (defun executable-exists (name)
@@ -91,3 +81,18 @@
 				   (dotimes (y 2000)
 				     (aref array i y))))))
     total-run-time))
+
+
+
+
+
+(defun perform-test-suite ()
+  (multiple-value-bind (mem-total mem-free)
+      (mem-size)
+    (list `(listen-port ,ws.config:*default-slave-port*)
+	  `(architecture ,(architecture))
+	  `(cpus ,(cpu-cores))
+	  `(fpu-test ,(fpu-test))
+	  `(mem-total ,mem-total)
+	  `(mem-free ,mem-free)
+	  `(mem-access ,(mem-access)))))

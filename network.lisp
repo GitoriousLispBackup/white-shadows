@@ -1,3 +1,5 @@
+;; depends on: ws.ports-table, global-abstractions
+
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
@@ -36,4 +38,5 @@
 									:input t
 									:output t)))
 		,@body))
+	 (finish-output ,(first varlist))
 	 (sb-bsd-sockets:socket-close ,socket)))))

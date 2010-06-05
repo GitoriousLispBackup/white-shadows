@@ -1,3 +1,5 @@
+;; depends-on: ws.config
+
 (in-package :common-lisp-user)
 
 (require :sb-bsd-sockets)
@@ -6,7 +8,7 @@
   (:nicknames :ws.p-table)
   (:use :common-lisp
 	:common-lisp-user)
-  (:export "bind-socket-to-free-port"))
+  (:export :bind-socket-to-free-port))
 
 (in-package :h2s04.white-shadow.ports-table)
 
@@ -48,7 +50,7 @@
 
 ;; ok
 (defun try-to-bind (socket port)
-  (sb-bsd-sockets:socket-bind socket (vector 127 0 0 1) port))
+  (sb-bsd-sockets:socket-bind socket ws.config:*this-node-ip* port))
 
 
 
@@ -70,3 +72,10 @@
 	  (let ((new-free-port (bind-socket-to-free-port socket))) ;; recursion
 	    (remove-port-from-table free-port)
 	    new-free-port))))))
+
+
+
+;; ok
+(defun release-port (port)
+  (sb-thread:with-recursive-lock (*table-access-mutex*)
+    (remove-port-from-table port)))

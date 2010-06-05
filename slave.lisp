@@ -1,3 +1,5 @@
+;; depends on ws.protocol, ws.network, ws.config
+
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
@@ -5,7 +7,8 @@
 (defpackage h2s04.white-shadow.slave
   (:nicknames :ws.slave)
   (:use :common-lisp
-	:common-lisp-user)
+	:common-lisp-user
+	:ws.g)
   (:export :start-slave
 	   :connect-to-master))
 
@@ -14,6 +17,7 @@
 
 
 (defparameter *current-master* nil "Holds ip of a master")
+(defparameter *test-results* nil)
 
 
 
@@ -47,36 +51,50 @@
 	    (ws.protocol::send-printable-object socket total))
 	(END-OF-FILE () (format t "end of file catched~%"))))))
 
-(defparameter *tests* (ws.tests:perform-tests-suite))
 
 
-
-;; mock
+;; ok
 (defun connect-to-master (&optional
 			  (ip ws.config:*default-master*)
 			  (port ws.config:*default-master-port*))
-  (format t "[ws.slave:connect-to-master] performing tests...~%")
-  (let ((tests-result *tests*))
-    (ws.network:with-tcp-stream (stream ip port)
-      (format stream "~a~%" tests-result)
-      (finish-output stream)
-      (handler-case
-	  (let ((server-answer (read stream)))
-	    (cond
-	      ((equal (symbol-name server-answer) "OK")
-	       (setf *current-master* ip)
-	       (format t "succesfully connected to master ~a : ~a~%" ip port))
-	      ((equal (symbol-name server-answer) "ERROR")
-		(format t "master rejected this node~%"))
-	      (t
-		(error "I've sent tests to master but received crap. Exiting..."))))
-	(END-OF-FILE () (error "connection to master lost =("))))))
+  (when (null *test-results*)
+    (format t "[ws.slave:connect-to-master] -> no test results, performing test suite...~%")
+    (setf *test-results*
+	  (ws.tests:perform-test-suite)))
+  (ws.network:with-tcp-stream (stream ip port)
+    (format stream "~a~%" *test-results*)
+    (finish-output stream)
+    (handler-case
+	(let ((server-answer (read stream)))
+	  (cond
+	    ((equal (symbol-name server-answer) "OK")
+	     (setf *current-master* ip)
+	     (format t "succesfully connected to master ~a : ~a~%" ip port))
+	    ((equal (symbol-name server-answer) "ERROR")
+	     (format t "master rejected this node~%"))
+	    (t
+	     (error "I've sent tests to master but received crap. Exiting..."))))
+      (END-OF-FILE () (error "connection to master lost =(")))))
+
+
+
+;; mock
+(defun execute-task (task)
+  (let ((task-id (make-task-id :end-point (make-end-point :ip (second (second task))
+							  :port (second (third task)))
+			       :number (second (fourth task))))
+	(task-name (second (fifth task)))
+	(respond-to (make-end-point :ip (second (sixth task))
+				    :port (second (seventh task))))
+	(task-code (cddddr (cdr (cdr (cdr task))))))
+    (format t "code to be executed:~a~%" task-code)
+    (eval `(progn ,@task-code))))
 
 
 
 
 ;; mock
-(defun start-slave (port)
+(defun start-slave (&optional (port ws.config:*default-slave-port*))
   (let ((socket (make-instance 'sb-bsd-sockets:inet-socket
 			       :type :stream
 			       :protocol :tcp)))
@@ -90,9 +108,6 @@
 		  (client-stream (sb-bsd-sockets:socket-make-stream client-socket
 								    :input t
 								    :output t))
-		  (buffer (make-array 55
-				      :initial-element 0
-				      :element-type '(unsigned-byte 8)))
 		  (task nil))
 	     ;; connection accepted. reading from stream...
 	     (format t "slave started at port:~a~%" port)
@@ -105,7 +120,8 @@
 	     (finish-output)
 	     (cond
 	       ((ws.protocol:single-task-p task)
-		(format client-stream "~a~%" 'TASK-OK))
+		(format client-stream "~a~%" 'TASK-OK)
+		(execute-task task))
 	       ((ws.protocol:resource-p task)
 		(format t "received resource~%")
 		(format client-stream "~a~%" 'RESOURCE-OK)
