@@ -18,10 +18,16 @@
 (defparameter *last-task-number-mutex* (sb-thread:make-mutex :name "last-task-id-mutex"))
 
 
+(defun this-end-point ()
+  (make-end-point :ip ws.config:*this-node-ip*
+		  :port ws.config:*default-master-port*))
+
+
 ;; ok
-(defun generate-task-number ()
+(defun generate-task-id ()
   (sb-thread:with-mutex (*last-task-number-mutex*)
-    (incf *last-task-number*)))
+    (make-task-id :end-point (this-end-point)
+		  :number (incf *last-task-number*))))
 
 
 
@@ -57,7 +63,7 @@
 
 ;; ok
 (defstruct task
-  (id (generate-task-number))
+  (id (generate-task-id))
   (name nil)
   (status 'not-launched) ;; possible statuses: 'not-launched 'in-progress 'finished 'execution-error
   (creation-time (get-universal-time))

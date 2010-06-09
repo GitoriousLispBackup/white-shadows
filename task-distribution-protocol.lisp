@@ -166,10 +166,14 @@
 					     (RESPOND-TO-IP ,(end-point-ip respond-to))
 					     (RESPOND-TO-PORT ,(end-point-port respond-to))
 					     ,task))
-    (let* ((socket-stream (sb-bsd-sockets:socket-make-stream connection
+    (let ((socket-stream (sb-bsd-sockets:socket-make-stream connection
 							     :input t
 							     :output t))
-	   (slave-answer (read socket-stream)))
+	   (slave-answer nil))
+      (handler-case
+	  (setf slave-answer (read socket-stream))
+	(END-OF-FILE () (progn
+			  (setf slave-answer 'nil))))
       (format t "slave said:~a~%" slave-answer) ;; debug
       (cond
 	((equal (symbol-name slave-answer) "TASK-OK")
@@ -179,6 +183,10 @@
 		(end-point-ip slave)
 		(end-point-port slave))
 	 nil)
+	((null slave-answer)
+	 (error "Connection to slave ~a:~a lost while sending task~%"
+		(end-point-ip slave)
+		(end-point-port slave)))
 	(t (error "Slave answered in an unknown manner:~a"
 		  slave-answer)
 	   nil)))))

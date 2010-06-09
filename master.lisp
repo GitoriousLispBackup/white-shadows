@@ -1,5 +1,3 @@
-;; depends on: ws.protocol, ws.network, ws.config
-
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
@@ -221,7 +219,7 @@ task-id - task identifier in ws.t-table"
 	  (suitable-nodes (find-suitable-nodes ,task-requirements *available-nodes*))
 	  (sorted-nodes (sort (copy-list suitable-nodes) ,sort-function))
 	  (task-code ,client-part)
-	  (task-id (ws.t-table:insert-task)))
+	  (task-id (ws.t-table:insert-task task-name)))
      (format t "suitable nodes: ~a~%" suitable-nodes)
      (format t "sorted nodes: ~a~%" sorted-nodes)
      ,@body))
@@ -233,12 +231,12 @@ task-id - task identifier in ws.t-table"
   `(let* ((,server-socket-name (make-instance 'sb-bsd-sockets:inet-socket
 					      :type :stream
 					      :protocol :tcp))
-	  (,port (bind-socket-to-free-port ,server-socket-name)))
+	  (,port (ws.p-table:bind-socket-to-free-port ,server-socket-name)))
      (unwind-protect
 	  (progn
 	    (sb-bsd-sockets:socket-listen ,server-socket-name 30)
 	    ,@body)
-       (sb-bsd-sockets:socket-close server-socket-name))))
+       (sb-bsd-sockets:socket-close ,server-socket-name))))
        
 
 
@@ -267,7 +265,6 @@ task-id - task identifier in ws.t-table"
        (dolist (,node-iterator-s ,nodes-list-s)
 	 (sb-thread:make-thread
 	  #'(lambda ()
-	      (let ((,send-result-s nil))
 		(handler-case
 		    (progn
 		      (setf ,send-result-s
@@ -276,10 +273,10 @@ task-id - task identifier in ws.t-table"
 						   ,task-name-s
 						   ,master-s
 						   (node->end-point ,node-iterator-s))))
-		  (nil (some-exception)
-		    (funcall ,fail-clause)))
-		(when ,send-result-s
-		  (funcall ,okay-clause)))))))))
+		  (t (some-exception)
+		    (funcall ,fail-clause))
+		  (:no-error ()
+		    (funcall ,okay-clause)))))))))
 
 
 
@@ -299,23 +296,19 @@ task-id - task identifier in ws.t-table"
 
 
 
+'(with-task ("pew"
+	     #'(lambda (node)
+		 t)
+	     #'(lambda (node1 node2)
+		 nil)
+	     '(format t "hello from server11 onononeee~%"))
+  (with-distribute-task (task-code task-id task-name suitable-nodes (make-end-point :ip (vector 127 0 0 1)
+										    :port 200))
+    #'(lambda ()
+	(format t "pew!~%"))
+    #'(lambda ()
+	(format t "pow!~%"))))
 
-'(execute-task (15 "mine uber task")
-  (lambda (node)
-    (and (> (node-cpu node) 1)
-	(> (node-free-mem node) 400)))
- (lambda (node1 node2)
-   (< (load-level node1) (load-level node2)))
- (client-part - a single form that evaluates to a task)
- (print *available-nodes*)
- (print *suitable-nodes*)
- (with-responce-socket (socket master-port)
-   (distribute-task *suitable-nodes* master-port :master-ip (get-ip) :resources '( "1.jpg" "2.lisp" "3.tar.gz"))
-   (with-slave-responce (socket slave slave-socket)
-     "this code will be executed in separate thread for each connected slave"
-     (do-something-1)
-     (do-something-2))
-   ))
 
 
 
