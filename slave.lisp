@@ -96,7 +96,10 @@
 (defun start-slave (&optional (port ws.config:*default-slave-port*))
   (let ((socket (make-instance 'sb-bsd-sockets:inet-socket
 			       :type :stream
-			       :protocol :tcp)))
+			       :protocol :tcp))
+	(buffer (make-array 500
+				     :element-type '(unsigned-byte 8)
+				     :initial-element 0)))
     (unwind-protect
 	 (progn
 	   (sb-bsd-sockets:socket-bind socket ;; comment this out
@@ -121,27 +124,8 @@
 	     (unwind-protect
 		  (progn
 		    (format t "slave started at port:~a~%" port)
-		    (handler-case
-			(progn
-			  (setf task (read client-stream))
-			  (format t "accepted data:~a~%" task))
-		      (END-OF-FILE () (progn
-					(format t "connection to master lost~%"))))
-		    (cond
-		      ((ws.protocol:single-task-p task)
-		       (format client-stream "~a~%" 'TASK-OK)
-		       (execute-task task))
-		      ((ws.protocol:resource-p task)
-		       (format t "received resource~%")
-		       (format client-stream "~a~%" 'RESOURCE-OK)
-		       (finish-output client-stream)
-		       (format t "receiving binary data...~%")
-		       (accept-binary-file (concatenate 'string
-							"res/"
-							(second task))
-					   (third task)
-					   client-socket))
-		      (t (format client-stream "~a~%" 'bad-format))))
+		    (sb-bsd-sockets:socket-receive client-socket buffer 500)
+		    (format t "data received from client:~a" buffer))
 	       (sb-bsd-sockets:socket-close client-socket)
 	       (sb-bsd-sockets:socket-close client-socket)
 	       (format t "unwind-protect: client-socket closed~%"))))
