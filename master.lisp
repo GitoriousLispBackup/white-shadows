@@ -3,12 +3,14 @@
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
+(require 'sb-md5)
 
 (defpackage h2s04.white-shadow.master
   (:nicknames :ws.master)
   (:use :common-lisp
 	:common-lisp-user
-	:ws.g)
+	:ws.g
+	:ws.network)
   (:export :start-slave-accepter
 	   :stop-slave-accepter))
 
@@ -71,9 +73,8 @@
     (setf *stop-slave-accepter* t)
     (unwind-protect
 	 (progn
-	   (ws.network:with-tcp-stream (stream
-					ws.config:*this-node-ip*
-					ws.config:*default-master-port*)
+	   (with-tcp-connection (stream (make-end-point :ip ws.config:*this-node-ip*
+							:port ws.config:*default-master-port*))
 	     (format stream "~a~%" 'cancel))
 	   (sb-thread:join-thread *slave-accepter-thread*))
       (setf *stop-slave-accepter* nil))))
@@ -248,7 +249,7 @@ task-id - task identifier in ws.t-table"
 
 
 
-;; new, move to ws.protocol
+;; ok, move to ws.protocol
 (defmacro with-distribute-task ((task-code task-id task-name nodes-list respond-to) okay-clause fail-clause)
   "okay-clause and fail-clause should be functions"
   (let ((task-code-s (gensym))
@@ -279,6 +280,8 @@ task-id - task identifier in ws.t-table"
 		    (funcall ,fail-clause)))
 		(when ,send-result-s
 		  (funcall ,okay-clause)))))))))
+
+
 
 '(with-distribute-task ('((format t "one more epik moment~%")
 			 (format t "task to be executed:~a~%" task-code)
@@ -314,17 +317,11 @@ task-id - task identifier in ws.t-table"
      (do-something-2))
    ))
 
-(macroexpand-1 '(with-task ("task-1"
-				    #'(lambda (node)
-					(> (node-free-mem 128)))
-				    #'(lambda (node1 node2)
-					(> (node-free-mem node1)
-					   (node-free-mem node2)))
-				    '(format t "result:~a~%" (+ 2 3)))
-			 (with-response-socket (socket master-port)
-			   (with-distribute-task (task-code suitable-nodes master-port)
-			     (okay-clause)
-			     (fail-clause)) ;; if returns t, a new approach is undertaken
-			   (with-slave-responce (server-socket slave slave-socket)
-			     ;; interact with slave
-			     ))))
+
+
+
+
+;;(defun task-exec ()
+;;  (format t "Task sent...~%Task sent...~%Task sent...~%Task sent...~%")
+;;  (sleep 5)
+;;  (format t "slave (127 0 0 1) : 30036 -> password~%"))

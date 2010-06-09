@@ -1,5 +1,3 @@
-;; depends on: ws.config
-
 (in-package :common-lisp-user)
 
 (defpackage h2s04.white-shadow.tests

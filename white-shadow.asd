@@ -15,12 +15,14 @@ a cluster or distributed system"
     :components ((:file "configuration")
 		 (:file "log")
 		 (:file "global-abstractions" :depends-on ("configuration"))
-		 (:file "statistics" :depends-on ("global-abstractions"))
 		 (:file "ports-table" :depends-on ("configuration"
 						   "global-abstractions"
 						   "log"))
 		 (:file "network" :depends-on ("ports-table"
 					       "global-abstractions"))
+		 (:file "statistics" :depends-on ("configuration"
+						  "global-abstractions"
+						  "network"))
 		 (:file "task-distribution-protocol" :depends-on ("configuration"
 								  "global-abstractions"
 								  "network"))))

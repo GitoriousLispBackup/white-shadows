@@ -21,7 +21,7 @@
 ;; ok
 (defun generate-task-number ()
   (sb-thread:with-mutex (*last-task-number-mutex*)
-    (incf *last-task-number-mutex*)))
+    (incf *last-task-number*)))
 
 
 

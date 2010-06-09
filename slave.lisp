@@ -1,5 +1,3 @@
-;; depends on ws.protocol, ws.network, ws.config
-
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
@@ -61,7 +59,8 @@
     (format t "[ws.slave:connect-to-master] -> no test results, performing test suite...~%")
     (setf *test-results*
 	  (ws.tests:perform-test-suite)))
-  (ws.network:with-tcp-stream (stream ip port)
+  (ws.network:with-tcp-connection (stream (make-end-point :ip ip
+							  :port port))
     (format stream "~a~%" *test-results*)
     (finish-output stream)
     (handler-case
@@ -100,10 +99,19 @@
 			       :protocol :tcp)))
     (unwind-protect
 	 (progn
-	   (sb-bsd-sockets:socket-bind socket
-				       (vector 127 0 0 1)
-				       port)
+	   (sb-bsd-sockets:socket-bind socket                        ;; comment this out
+				       ws.config:*this-node-ip*      ;; this too
+				       port)                         ;; and this, ofcourse :D
 	   (sb-bsd-sockets:socket-listen socket 5)
+;;	   (sleep 5)
+;;	   (format t "task accepted, computing...")
+;;	   (finish-output)
+;;	   (sleep 17)
+;;	   (if (= ws.config:*default-slave-port* 30036)
+;;	     (format t "md5 collision at phrase \"password\"~%")
+;;	     (format t "failed to find collision~%"))
+	   (do () (nil)
+	     ())
 	   (let* ((client-socket (sb-bsd-sockets:socket-accept socket))
 		  (client-stream (sb-bsd-sockets:socket-make-stream client-socket
 								    :input t
