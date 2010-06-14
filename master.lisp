@@ -220,8 +220,6 @@ task-id - task identifier in ws.t-table"
 	  (sorted-nodes (sort (copy-list suitable-nodes) ,sort-function))
 	  (task-code ,client-part)
 	  (task-id (ws.t-table:insert-task task-name)))
-     (format t "suitable nodes: ~a~%" suitable-nodes)
-     (format t "sorted nodes: ~a~%" sorted-nodes)
      ,@body))
 
 
@@ -255,8 +253,7 @@ task-id - task identifier in ws.t-table"
 	(task-name-s (gensym))
 	(nodes-list-s (gensym))
 	(master-s (gensym))
-	(node-iterator-s (gensym))
-	(send-result-s (gensym)))
+	(node-iterator-s (gensym)))
     `(let ((,task-code-s ,task-code)
 	   (,task-id-s ,task-id)
 	   (,task-name-s ,task-name)
@@ -265,18 +262,18 @@ task-id - task identifier in ws.t-table"
        (dolist (,node-iterator-s ,nodes-list-s)
 	 (sb-thread:make-thread
 	  #'(lambda ()
-		(handler-case
-		    (progn
-		      (setf ,send-result-s
-			    (ws.protocol:send-task ,task-code-s
-						   ,task-id-s
-						   ,task-name-s
-						   ,master-s
-						   (node->end-point ,node-iterator-s))))
-		  (t (some-exception)
-		    (funcall ,fail-clause))
-		  (:no-error ()
-		    (funcall ,okay-clause)))))))))
+;;	      (handler-case
+		  (ws.protocol:send-task ,task-code-s
+					 ,task-id-s
+					 ,task-name-s
+					 ,master-s
+					 (node->end-point ,node-iterator-s))
+		))))))
+	      ;;(t (some-exception)
+		;; (funcall ,fail-clause)
+		 ;;(signal some-exception))
+	      ;;(:no-error ()
+		;;	 (funcall ,okay-clause)))))))))
 
 
 
