@@ -1,65 +1,3 @@
-;; This file contains Task Distribution Protocol (TDP) realization.
-;; This protocol is a set of rules and actions order two hosts
-;; (usually master and slave) must obey.
-
-;; TDP is a protocol for task interchange in a distributed system.
-;; All hosts are divided into masters and slaves. One host may be
-;; master and slave at the same time. Master creates and distributes
-;; tasks, slaves executes them and send results back to master.
-
-;; 1. Master connects to a slave:
-;; (let ((connection (ws.protocol:establish '("127.0.0.1"))))
-;;   ...
-
-;; 2. Master sends a single task to a slave:
-;; (let ((connection (ws.protocol:establish '("127.0.0.1"))))
-;;   (ws.protocol:send-single-task connection '(+ 2 3))
-;;   ...
-
-;; This was an asynchronous call, send-single-task doesn't wait for
-;; form execution it just raises an exception in case of protocol
-;; errors or returns nil if everything is ok.
-
-;; 3. Master waits for results of sent task execution
-;; (let ((connection (ws.protocol:establish '("127.0.0.1"))))
-;;   (ws.protocol:send-single-task connection '(+ 2 3))
-;;   (ws.protocol:with-response connection
-;;     (do something 1)
-;;     (do something 2)))
-
-;; 3. Master closes a connection
-;; (with-tcp-connection connection '("127.0.0.1")
-;;   (let ((response-socket (make-response-socket))
-;;         (respond-to ws.p-table:bind-socket-to-free-port response-socket))
-;;     (ws.protocol:send-single-task connection :id 234 :name "lol-task" :respond-to listener :task '(+ 2 3))
-;;     (ws.protocol:close-connection connection)))
-
-;; Or a safe form should be used:
-;; (ws.protocol:with-connection connection '("127.0.0.1")
-;;   (ws.protocol:send-single-task connection '(+ 2 3)))
-
-
-;; protocol documentation
-;; 1. send a single task:
-;;   A. Master establishes tcp connection to a slave
-;;   B. Master sends a five-digit string that represents the length of a folowing message. If this number is less than five digits long then it must be prepended with zeros: 00024 or 01234
-;;   C. Master sends a text message of the following format:
-;;
-;;   (SINGLE-TASK (ID <a number>) (NAME <a string> ) (RESPOND-TO <a vector> <a number>)
-;;     (<TASK CODE1>)
-;;     (<TASK CODE2>))
-;;
-;;     A vector and a number in the (RESPOND-TO ..) section are ip-address and a port
-;;     <TASK CODE> are forms that are to be executed
-;;
-;;   C. Slave may respond with the following messages:
-;;      (OK) - task approved, but it may begin it's execution in a future
-;;      (BAD-FORMAT) - task is not appropriately formed
-;;
-;;   D. After slave responds, tcp connection is closed.
-
-
-
 (in-package :common-lisp-user)
 
 (require 'sb-bsd-sockets)
@@ -86,14 +24,6 @@
   (establishment-time nil)
   (address nil))
 
-;;(defstruct node
-;;  (ip nil)
-;;  (port nil))
-
-;;(defstruct address
-;;  (ip 0)
-;;  (port *default-slave-port*))
-
 
 
 ;; utility functions
@@ -117,10 +47,12 @@
 
 ;; ok
 (defun send-printable-object (socket obj)
-  (let ((obj-str (concatenate 'string
-			      (prin1-to-string obj)
-			      (list #\return #\newline))))
-    (sb-bsd-sockets:socket-send socket obj-str (length obj-str))))
+  (let ((*package* (find-package :ws.protocol)))
+    (let ((string-to-send (concatenate 'string
+				       (prin1-to-string obj)
+				       (list #\return #\newline))))
+      (sb-bsd-sockets:socket-send socket string-to-send
+				  (length string-to-send)))))
 
 
 
@@ -159,37 +91,37 @@
 (defun send-task (task task-id name respond-to slave)
   "Low-level function that sends lisp objects to a remote host. In case of errors during execution REMOTE-ERROR exception is raised and nil is returned. If ok, t is returned."
   (with-tcp-connection connection (end-point-ip slave) (end-point-port slave)
-    (send-printable-object connection `(TASK (ID-IP ,(end-point-ip (task-id-end-point task-id)))
-					     (ID-PORT ,(end-point-port (task-id-end-point task-id)))
-					     (ID-NUMBER ,(task-id-number task-id))
-					     (NAME ,name)
-					     (RESPOND-TO-IP ,(end-point-ip respond-to))
-					     (RESPOND-TO-PORT ,(end-point-port respond-to))
-					     ,task))
-    (let ((socket-stream (sb-bsd-sockets:socket-make-stream connection
-							     :input t
-							     :output t))
-	   (slave-answer nil))
-      (handler-case
-	  (setf slave-answer (read socket-stream))
-	(END-OF-FILE () (progn
-			  (setf slave-answer 'nil))))
-      (format t "slave said:~a~%" slave-answer) ;; debug
-      (cond
-	((equal (symbol-name slave-answer) "TASK-OK")
-	 t)
-	((equal (symbol-name slave-answer) "BAD-FORMAT")
-	 (error "Slave ~a:~a did not understand the message."
-		(end-point-ip slave)
-		(end-point-port slave))
-	 nil)
-	((null slave-answer)
-	 (error "Connection to slave ~a:~a lost while sending task~%"
-		(end-point-ip slave)
-		(end-point-port slave)))
-	(t (error "Slave answered in an unknown manner:~a"
-		  slave-answer)
-	   nil)))))
+		       (send-printable-object connection `(TASK (ID-IP ,(end-point-ip (task-id-end-point task-id)))
+								(ID-PORT ,(end-point-port (task-id-end-point task-id)))
+								(ID-NUMBER ,(task-id-number task-id))
+								(NAME ,name)
+								(RESPOND-TO-IP ,(end-point-ip respond-to))
+								(RESPOND-TO-PORT ,(end-point-port respond-to))
+								,task))
+		       (let ((socket-stream (sb-bsd-sockets:socket-make-stream connection
+									       :input t
+									       :output t))
+			     (slave-answer nil))
+			 (handler-case
+			     (setf slave-answer (read socket-stream))
+			   (END-OF-FILE () (progn
+					     (setf slave-answer 'nil))))
+			 (format t "slave said:~a~%" slave-answer) ;; debug
+			 (cond
+			   ((equal (symbol-name slave-answer) "TASK-OK")
+			    t)
+			   ((equal (symbol-name slave-answer) "BAD-FORMAT")
+			    (error "Slave ~a:~a did not understand the message."
+				   (end-point-ip slave)
+				   (end-point-port slave))
+			    nil)
+			   ((null slave-answer)
+			    (error "Connection to slave ~a:~a lost while sending task~%"
+				   (end-point-ip slave)
+				   (end-point-port slave)))
+			   (t (error "Slave answered in an unknown manner:~a"
+				     slave-answer)
+			      nil)))))
 
 
 

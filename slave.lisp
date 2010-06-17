@@ -8,7 +8,8 @@
 	:common-lisp-user
 	:ws.g)
   (:export :start-slave
-	   :connect-to-master))
+	   :connect-to-master
+	   :slave1))
 
 (in-package :ws.slave)
 
@@ -86,7 +87,7 @@
 	(respond-to (make-end-point :ip (second (sixth task))
 				    :port (second (seventh task))))
 	(task-code (cddddr (cdr (cdr (cdr task))))))
-    (format t "code to be executed:~a~%" task-code)
+    (format t "code to be executed:~a~%" (prin1-to-string task-code))
     (finish-output)
     (eval `(progn ,@task-code))))
 
@@ -96,25 +97,14 @@
 (defun start-slave (&optional (port ws.config:*default-slave-port*))
   (let ((socket (make-instance 'sb-bsd-sockets:inet-socket
 			       :type :stream
-			       :protocol :tcp))
-	(buffer (make-array 500
-			    :element-type '(unsigned-byte 8)
-			    :initial-element 0)))
+			       :protocol :tcp)))
+    (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
     (unwind-protect
 	 (progn
-	   (sb-bsd-sockets:socket-bind socket ;; comment this out
-				       ws.config:*this-node-ip*	;; this too
-				       port) ;; and this, ofcourse :D
+	   (sb-bsd-sockets:socket-bind socket
+				       ws.config:*this-node-ip*
+				       port)
 	   (sb-bsd-sockets:socket-listen socket 5)
-	   ;;	   (sleep 5)
-	   ;;	   (format t "task accepted, computing...")
-	   ;;	   (finish-output)
-	   ;;	   (sleep 17)
-	   ;;	   (if (= ws.config:*default-slave-port* 30036)
-	   ;;	     (format t "md5 collision at phrase \"password\"~%")
-	   ;;	     (format t "failed to find collision~%"))
-	   ;;	   (do () (nil)
-	   ;;	     ())
 	   (let* ((client-socket (sb-bsd-sockets:socket-accept socket))
 		  (client-stream (sb-bsd-sockets:socket-make-stream client-socket
 								    :input t
@@ -133,6 +123,7 @@
 		    (cond
 		      ((ws.protocol:single-task-p task)
 		       (format client-stream "~a~%" 'TASK-OK)
+		       (finish-output client-stream)
 		       (execute-task task))
 		      ((ws.protocol:resource-p task)
 		       (format t "received resource~%")
@@ -144,13 +135,31 @@
 							(second task))
 					   (third task)
 					   client-socket))
-		      (t (format client-stream "~a~%" 'bad-format)))
-;;		    (format t "slave started at port:~a~%" port)
-;;		    (sb-bsd-sockets:socket-receive client-socket buffer 500)
-;;		    (format t "data received from client:~a" buffer))
-	       (sb-bsd-sockets:socket-close client-socket)
-	       (sb-bsd-sockets:socket-close client-socket)
-	       (format t "unwind-protect: client-socket closed~%"))))
+		      (t (format client-stream "~a~%" 'bad-format))))
+	       (finish-output client-stream)
+	       (sb-bsd-sockets:socket-close client-socket))))
       (progn (sb-bsd-sockets:socket-close socket)
-	     (sb-bsd-sockets:socket-close socket)
 	     (format t  "unwind-protect: slave socket closed~%")))))
+
+(defparameter *ts* nil)
+
+
+(defun slave1 ()
+  (ws.network:with-tcp-server (client-stream addr ws.config:*default-slave-port* '*ts*)
+    (let ((task (read client-stream)))
+      (cond
+	((ws.protocol:single-task-p task)
+	 (format client-stream "~a~%" 'TASK-OK)
+	 (finish-output client-stream)
+	 (execute-task task))
+	((ws.protocol:resource-p task)
+	 (format t "received resource~%")
+	 (format client-stream "~a~%" 'RESOURCE-OK)
+	 (finish-output client-stream)
+	 (format t "receiving binary data...~%")
+	 (accept-binary-file (concatenate 'string
+					  "res/"
+					  (second task))
+			     (third task)
+			     client-socket))
+	(t (format client-stream "~a~%" 'bad-format))))))
