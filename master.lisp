@@ -262,18 +262,17 @@ task-id - task identifier in ws.t-table"
        (dolist (,node-iterator-s ,nodes-list-s)
 	 (sb-thread:make-thread
 	  #'(lambda ()
-;;	      (handler-case
+	      (handler-case
 		  (ws.protocol:send-task ,task-code-s
 					 ,task-id-s
 					 ,task-name-s
 					 ,master-s
 					 (node->end-point ,node-iterator-s))
-		))))))
-	      ;;(t (some-exception)
-		;; (funcall ,fail-clause)
-		 ;;(signal some-exception))
-	      ;;(:no-error ()
-		;;	 (funcall ,okay-clause)))))))))
+		(t (some-exception)
+		  (funcall ,fail-clause)
+		  (signal some-exception))
+		(:no-error (b1)
+		  (funcall ,okay-clause)))))))))
 
 
 

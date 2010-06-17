@@ -57,7 +57,7 @@
 	#'(lambda ()
 	    (unwind-protect
 		 (progn
-		   (setf (sb-bsd-sockets:sockopt-reuse-address ,server-socket-s) t)   ;; wath this
+		   (setf (sb-bsd-sockets:sockopt-reuse-address ,server-socket-s) t)   ;; watch this
 		   (sb-bsd-sockets:socket-bind ,server-socket-s
 					       ws.config:*this-node-ip*
 					       ,accept-port-s)
